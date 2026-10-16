@@ -28,7 +28,12 @@ export function FoodDatabase() {
   const filtered = foods.filter((f) => {
     if (!q.trim()) return true;
     const qq = q.toLowerCase();
-    return f.name.toLowerCase().includes(qq) || (f.localName?.toLowerCase().includes(qq) ?? false);
+    return (
+      f.name.toLowerCase().includes(qq) ||
+      (f.localName?.toLowerCase().includes(qq) ?? false) ||
+      (f.brand?.toLowerCase().includes(qq) ?? false) ||
+      (f.aliases?.some((a) => a.toLowerCase().includes(qq)) ?? false)
+    );
   });
 
   function openNew() {
@@ -59,6 +64,7 @@ export function FoodDatabase() {
   async function save() {
     if (!draft.name.trim()) return;
     const food: Food = {
+      ...(editing || {}),
       id: editing ? editing.id : `custom-${Date.now()}`,
       name: draft.name.trim(),
       localName: draft.localName?.trim() || undefined,
@@ -105,6 +111,8 @@ export function FoodDatabase() {
               <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as FoodCategory })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900">
                 <option value="south_indian">South Indian</option>
                 <option value="north_indian">North Indian</option>
+                <option value="branded">Branded</option>
+                <option value="international">International</option>
                 <option value="staple">Staple</option>
                 <option value="ingredient">Ingredient</option>
                 <option value="snack">Snack</option>
@@ -136,12 +144,15 @@ export function FoodDatabase() {
         {filtered.slice(0, 200).map((f) => (
           <div key={f.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="truncate text-sm font-semibold text-slate-900 dark:text-white">{f.name}</span>
+                {f.brand && <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800">{f.brand}</span>}
+                {f.dietaryPreference === "non_veg" && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] text-red-800 dark:bg-red-900/40 dark:text-red-200">non-veg</span>}
                 {f.isApproximate && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">approx</span>}
                 {f.source !== "seed" && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] text-violet-800">{f.source}</span>}
               </div>
-              <div className="truncate text-xs text-slate-500">{f.servingDescription} · {f.calories} kcal · P {f.protein} C {f.carbs} F {f.fat} · {f.category}</div>
+              {f.localName && <div className="text-[11px] text-slate-400 dark:text-slate-500">{f.localName}</div>}
+              <div className="truncate text-xs text-slate-500 mt-0.5">{f.servingDescription} · {Math.round(f.calories)} kcal · P {f.protein} C {f.carbs} F {f.fat} · {f.category}</div>
             </div>
             <div className="flex shrink-0 gap-1">
               <button onClick={() => openEdit(f)} className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800">Edit</button>
