@@ -35,9 +35,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   hydrate: async () => {
     let foods = await dbOps.getAllFoods();
+    const SEED_VERSION = "2026-10-16-v2";
+    const currentVersion = localStorage.getItem("fitness-seed-version");
+
     if (foods.length === 0) {
       await dbOps.putFoods(SEED_FOODS);
       foods = [...SEED_FOODS];
+      localStorage.setItem("fitness-seed-version", SEED_VERSION);
+    } else if (currentVersion !== SEED_VERSION) {
+      // Preserve custom / AI foods, replace seed items with verified nutrition data
+      const customFoods = foods.filter((f) => f.source !== "seed");
+      const combined = [...SEED_FOODS, ...customFoods];
+      await dbOps.putFoods(combined);
+      foods = combined;
+      localStorage.setItem("fitness-seed-version", SEED_VERSION);
     }
     const settings = (await dbOps.getSettings()) || DEFAULT_SETTINGS;
     // persist defaults if missing

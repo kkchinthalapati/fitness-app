@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useAppStore } from "../store/appStore";
 import { TotalsBar } from "../components/TotalsBar";
 import { FoodSearch } from "../components/FoodSearch";
 import { CameraButton } from "../components/CameraButton";
 import type { Food, FoodEntry, MealType, Unit } from "../types";
 import { MEAL_LABELS, UNIT_TO_GRAMS } from "../types";
+
+function getTodayStr() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 function addDays(dateStr: string, delta: number) {
   const d = new Date(dateStr + "T12:00:00");
@@ -42,14 +50,6 @@ export function DailyLog() {
   const [meal, setMeal] = useState<MealType>("lunch");
   const [showAdd, setShowAdd] = useState(false);
 
-  useEffect(() => {
-    if (selectedFood) {
-      // reset unit default per food type: piece foods default to piece
-      if (selectedFood.servingDescription.includes("piece")) setUnit("piece");
-      else setUnit("serving");
-    }
-  }, [selectedFood]);
-
   const grouped = useMemo(() => {
     const g: Record<MealType, FoodEntry[]> = { breakfast: [], lunch: [], dinner: [], snack: [] };
     for (const e of entries) g[e.meal].push(e);
@@ -59,6 +59,7 @@ export function DailyLog() {
   function handlePick(food: Food) {
     setSelectedFood(food);
     setQty(1);
+    setUnit(food.servingDescription.includes("piece") ? "piece" : "serving");
     setShowAdd(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -86,8 +87,7 @@ export function DailyLog() {
   }
 
   const preview = selectedFood ? computeEntry(selectedFood, qty, unit) : null;
-
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getTodayStr();
   const isToday = selectedDate === todayStr;
 
   return (
