@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
+import { HashRouter, NavLink, Route, Routes } from "react-router-dom";
 import { DailyLog } from "./pages/DailyLog";
 import { FoodDatabase } from "./pages/FoodDatabase";
 import { Settings } from "./pages/Settings";
@@ -90,8 +90,8 @@ function Shell() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Shell />
-    </BrowserRouter>
+    </HashRouter>
   );
 }

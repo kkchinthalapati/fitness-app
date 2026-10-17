@@ -6,6 +6,8 @@ const config: CapacitorConfig = {
   webDir: "dist",
   server: {
     androidScheme: "https",
+    url: "https://kkchinthalapati.github.io/fitness-app/",
+    cleartext: true,
   },
   plugins: {
     // Camera permissions handled via AndroidManifest
