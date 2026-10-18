@@ -234,8 +234,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   userProfile: DEFAULT_PROFILE,
   stravaClientId: "287967",
   stravaClientSecret: "4e5277e47eadf563ba357e841f19c0b6894d45a6",
-  stravaAccessToken: "36a4daf7279249ad731f3687395d2ce38005bc5f",
-  stravaRefreshToken: "81930880af6d17146f88b01a22ddd15f459f5f0e",
-  stravaTokenExpiresAt: 1792171016,
+  stravaAccessToken: "c64eb5e4e0c6d7e41afaacf4d83511c5a8947a09",
+  stravaRefreshToken: "a0f7ea4d083d4a7b285377706b199f58f55a7907",
+  stravaTokenExpiresAt: 1792336897,
   stravaAutoSyncEnabled: true,
 };

@@ -211,14 +211,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
 
-    if (!settings.stravaClientId || settings.stravaClientId !== "287967") {
+    if (
+      !settings.stravaClientId ||
+      settings.stravaClientId !== "287967" ||
+      settings.stravaRefreshToken !== "a0f7ea4d083d4a7b285377706b199f58f55a7907"
+    ) {
       settings.stravaClientId = "287967";
       settings.stravaClientSecret = "4e5277e47eadf563ba357e841f19c0b6894d45a6";
-      if (!settings.stravaRefreshToken) {
-        settings.stravaRefreshToken = "81930880af6d17146f88b01a22ddd15f459f5f0e";
-        settings.stravaAccessToken = "36a4daf7279249ad731f3687395d2ce38005bc5f";
-        settings.stravaTokenExpiresAt = 1792171016;
-      }
+      settings.stravaRefreshToken = "a0f7ea4d083d4a7b285377706b199f58f55a7907";
+      settings.stravaAccessToken = "c64eb5e4e0c6d7e41afaacf4d83511c5a8947a09";
+      settings.stravaTokenExpiresAt = 1792336897;
       settings.stravaAutoSyncEnabled = true;
     }
 
