@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAppStore } from "../store/appStore";
-import { getDB } from "../db";
+import { getDB, dbOps, DB_VERSION } from "../db";
 import {
   calculateBMR,
   calculateTDEE,
@@ -47,6 +47,11 @@ export function Settings() {
   const [fibGoal, setFibGoal] = useState(String(settings.fiberGoal || 32));
   const [waterGoal, setWaterGoal] = useState(String(settings.waterGoalMl || 2500));
 
+  // Preferences & Tracking Philosophy
+  const [theme, setTheme] = useState<"system" | "light" | "dark">(settings.theme || "system");
+  const [hideExerciseCalories, setHideExerciseCalories] = useState<boolean>(Boolean(settings.hideExerciseCalories));
+  const [enableWeightTracking, setEnableWeightTracking] = useState<boolean>(settings.enableWeightTracking !== false);
+
   // Strava Auto-Connector State
   const [stravaClientId, setStravaClientId] = useState(settings.stravaClientId || "");
   const [stravaClientSecret, setStravaClientSecret] = useState(settings.stravaClientSecret || "");
@@ -65,6 +70,108 @@ export function Settings() {
   const [model, setModel] = useState(settings.geminiModel || "gemini-2.0-flash");
 
   const [saved, setSaved] = useState(false);
+
+  // Backup & Storage Diagnostics State
+  const [storageStats, setStorageStats] = useState<{
+    recordCounts: Record<string, number>;
+    usageBytes?: number;
+    quotaBytes?: number;
+  } | null>(null);
+  const [backupStatus, setBackupStatus] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    dbOps.getStorageStats().then((stats) => {
+      if (mounted) setStorageStats(stats);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [saved]);
+
+  async function handleExportJSON() {
+    setIsExporting(true);
+    setBackupStatus(null);
+    try {
+      const jsonStr = await dbOps.exportFullBackup();
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `fitness-app-backup-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setBackupStatus({
+        success: true,
+        message: "Full JSON backup downloaded successfully!",
+      });
+    } catch (err: unknown) {
+      setBackupStatus({
+        success: false,
+        message: err instanceof Error ? err.message : "Failed to generate backup.",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  async function handleImportJSON(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm(`Restore data from "${file.name}"? This will safely merge or update records into your local database.`)) {
+      e.target.value = "";
+      return;
+    }
+
+    setIsImporting(true);
+    setBackupStatus(null);
+    try {
+      const text = await file.text();
+      const res = await dbOps.importFullBackup(text);
+      await useAppStore.getState().hydrate();
+      const stats = await dbOps.getStorageStats();
+      setStorageStats(stats);
+      setBackupStatus({
+        success: true,
+        message: `Backup restored! Loaded ${res.counts.foods} foods, ${res.counts.entries} entries, ${res.counts.workouts} workouts, ${res.counts.recipes} recipes.`,
+      });
+    } catch (err: unknown) {
+      setBackupStatus({
+        success: false,
+        message: `Restore failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      setIsImporting(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleExportCSV(type: "entries" | "workouts" | "weights") {
+    try {
+      const csvStr = await dbOps.exportToCSV(type);
+      const blob = new Blob([csvStr], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `fitness-${type}-${dateStr}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      alert(`CSV export failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // Computed BMR and TDEE preview
   const previewProfile: UserProfile = {
@@ -185,6 +292,9 @@ export function Settings() {
       fatGoal: Number(fGoal) || 65,
       fiberGoal: Number(fibGoal) || 32,
       waterGoalMl: Number(waterGoal) || 2500,
+      theme,
+      hideExerciseCalories,
+      enableWeightTracking,
       stravaClientId: stravaClientId.trim() || settings.stravaClientId || undefined,
       stravaClientSecret: stravaClientSecret.trim() || settings.stravaClientSecret || undefined,
       stravaRefreshToken: stravaRefreshToken.trim() || settings.stravaRefreshToken || undefined,
@@ -362,7 +472,93 @@ export function Settings() {
         </div>
       </div>
 
-      {/* 2. Daily Targets & Macronutrient Goals */}
+      {/* 2. Theme & Tracking Philosophy */}
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+        <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+          Appearance & Tracking Philosophy
+        </h2>
+
+        {/* Theme Selector */}
+        <div>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+            Color Theme
+          </label>
+          <div className="mt-1.5 grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => setTheme("system")}
+              className={`rounded-xl py-2 text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                theme === "system"
+                  ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xs"
+                  : "border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              }`}
+            >
+              <span>🌓</span> Auto
+            </button>
+            <button
+              type="button"
+              onClick={() => setTheme("light")}
+              className={`rounded-xl py-2 text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                theme === "light"
+                  ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xs"
+                  : "border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              }`}
+            >
+              <span>☀️</span> Light
+            </button>
+            <button
+              type="button"
+              onClick={() => setTheme("dark")}
+              className={`rounded-xl py-2 text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                theme === "dark"
+                  ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-2xs"
+                  : "border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              }`}
+            >
+              <span>🌙</span> Dark
+            </button>
+          </div>
+        </div>
+
+        {/* Tracking Philosophy & Adolescent Guidance Controls */}
+        <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={hideExerciseCalories}
+              onChange={(e) => setHideExerciseCalories(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+            />
+            <div>
+              <span className="text-xs font-bold text-slate-900 dark:text-white">
+                Hide Exercise Calories Burned
+              </span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Displays active minutes and workout consistency instead of calorie burn, preventing compensatory exercise thinking.
+              </p>
+            </div>
+          </label>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={enableWeightTracking}
+              onChange={(e) => setEnableWeightTracking(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+            />
+            <div>
+              <span className="text-xs font-bold text-slate-900 dark:text-white">
+                Enable Body Weight Tracking
+              </span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Optional body measurement tracking. When unchecked, weight inputs and cards are hidden so the tracker focuses purely on nourishment and fitness.
+              </p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      {/* 3. Daily Targets & Macronutrient Goals */}
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
         <h2 className="text-sm font-bold text-slate-900 dark:text-white">
           Nutritional & Hydration Targets
@@ -652,6 +848,183 @@ export function Settings() {
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
           />
         </label>
+      </div>
+
+      {/* 5. Data Management, Privacy & Local Backup */}
+      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-violet-600 text-sm text-white shadow-sm font-bold">
+              💾
+            </span>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                Data Management, Privacy & Local Backup
+              </h2>
+              <p className="text-xs text-slate-500">
+                100% offline-first · Zero cloud dependency · Full JSON & CSV exports
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+            IDB v{DB_VERSION}
+          </span>
+        </div>
+
+        {/* Backup Feedback Toast */}
+        {backupStatus && (
+          <div
+            className={`rounded-2xl p-3.5 text-xs font-semibold transition animate-fadeIn ${
+              backupStatus.success
+                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                : "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300 border border-red-200 dark:border-red-800"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span>{backupStatus.success ? "✓ " : "✕ "}{backupStatus.message}</span>
+              <button
+                type="button"
+                onClick={() => setBackupStatus(null)}
+                className="ml-2 font-bold opacity-70 hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* JSON Backup & Restore Actions */}
+        <div className="space-y-2">
+          <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
+            Full Database Snapshot (JSON)
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Export or restore all foods, custom foods, recipes, diary entries, workouts, and settings as a single portable file.
+          </p>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleExportJSON}
+              disabled={isExporting}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-violet-600 px-3 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-violet-700 disabled:opacity-50 transition"
+            >
+              <span>{isExporting ? "⏳" : "💾"}</span>
+              <span>{isExporting ? "Exporting..." : "Download Backup (.json)"}</span>
+            </button>
+
+            <label className="flex items-center justify-center gap-1.5 rounded-xl border border-violet-300 bg-violet-50 px-3 py-2.5 text-xs font-bold text-violet-700 hover:bg-violet-100 cursor-pointer disabled:opacity-50 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300 transition">
+              <span>{isImporting ? "⏳" : "📥"}</span>
+              <span>{isImporting ? "Restoring..." : "Restore Backup (.json)"}</span>
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={handleImportJSON}
+                disabled={isImporting}
+                className="hidden"
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* CSV Spreadsheet Exports */}
+        <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
+            Spreadsheet Data Exports (CSV)
+          </div>
+          <p className="text-[11px] text-slate-500">
+            Export cleanly formatted tabular records for Microsoft Excel, Apple Numbers, or Google Sheets.
+          </p>
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => handleExportCSV("entries")}
+              className="rounded-xl border border-slate-200 bg-white py-2 px-2 text-center text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition"
+            >
+              📋 Food Entries
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportCSV("workouts")}
+              className="rounded-xl border border-slate-200 bg-white py-2 px-2 text-center text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition"
+            >
+              🏃 Workouts
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportCSV("weights")}
+              className="rounded-xl border border-slate-200 bg-white py-2 px-2 text-center text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition"
+            >
+              ⚖️ Weight Logs
+            </button>
+          </div>
+        </div>
+
+        {/* Storage Diagnostics Table */}
+        <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              Storage Diagnostics & Record Counts
+            </span>
+            {storageStats?.usageBytes !== undefined && (
+              <span className="text-[11px] text-slate-400">
+                {(storageStats.usageBytes / 1024 / 1024).toFixed(2)} MB used
+              </span>
+            )}
+          </div>
+          {storageStats ? (
+            <div className="grid grid-cols-3 gap-2 pt-0.5">
+              <div className="rounded-xl bg-slate-50 p-2.5 text-center dark:bg-slate-800/50">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase">Foods</div>
+                <div className="text-sm font-black text-slate-900 dark:text-white">
+                  {storageStats.recordCounts.foods ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2.5 text-center dark:bg-slate-800/50">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase">Diary Entries</div>
+                <div className="text-sm font-black text-slate-900 dark:text-white">
+                  {storageStats.recordCounts.entries ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2.5 text-center dark:bg-slate-800/50">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase">Recipes</div>
+                <div className="text-sm font-black text-slate-900 dark:text-white">
+                  {storageStats.recordCounts.recipes ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2.5 text-center dark:bg-slate-800/50">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase">Workouts</div>
+                <div className="text-sm font-black text-slate-900 dark:text-white">
+                  {storageStats.recordCounts.workouts ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2.5 text-center dark:bg-slate-800/50">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase">Water Logs</div>
+                <div className="text-sm font-black text-slate-900 dark:text-white">
+                  {storageStats.recordCounts.waterEntries ?? 0}
+                </div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-2.5 text-center dark:bg-slate-800/50">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase">Weight Logs</div>
+                <div className="text-sm font-black text-slate-900 dark:text-white">
+                  {storageStats.recordCounts.weights ?? 0}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-xs text-slate-400 italic">Reading storage diagnostics...</div>
+          )}
+        </div>
+
+        {/* Privacy & Zero-Cloud Guarantee */}
+        <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-3.5 text-xs text-slate-600 dark:border-violet-950 dark:bg-violet-950/20 dark:text-slate-400 space-y-1">
+          <div className="font-bold text-violet-950 dark:text-violet-200 flex items-center gap-1.5">
+            <span>🛡️</span>
+            <span>Local-First & Offline Privacy Guarantee</span>
+          </div>
+          <p className="text-[11px] leading-relaxed">
+            All your food, nutrition, weight, and fitness logs live exclusively in your local browser storage (IndexedDB). No telemetry, no third-party cloud trackers, and no unsolicited data transmission. You have complete ownership of your data at all times.
+          </p>
+        </div>
       </div>
 
       <button

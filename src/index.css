@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   color-scheme: light dark;
 }
@@ -8,14 +10,19 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-body {
+html, body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background: #f8fafc;
   color: #0f172a;
 }
 
+html.dark, html.dark body {
+  background: #020617;
+  color: #f1f5f9;
+}
+
 @media (prefers-color-scheme: dark) {
-  body {
+  html:not(.light), html:not(.light) body {
     background: #020617;
     color: #f1f5f9;
   }
@@ -30,8 +37,11 @@ body {
   background: #cbd5e1;
   border-radius: 999px;
 }
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
 @media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-thumb {
+  html:not(.light) ::-webkit-scrollbar-thumb {
     background: #334155;
   }
 }

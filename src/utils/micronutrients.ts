@@ -69,6 +69,71 @@ export const ICMR_TEEN_RDA: Record<keyof Micronutrients | "fiber" | "protein", N
     category: "vitamin",
     description: "Non-heme iron absorption enhancer (critical for vegetarian diets), immunity",
   },
+  magnesium_mg: {
+    name: "Magnesium",
+    unit: "mg",
+    rda: 440,
+    upperLimit: 700,
+    category: "mineral",
+    description: "Enzyme function, energy metabolism, muscle recovery, protein synthesis",
+  },
+  zinc_mg: {
+    name: "Zinc",
+    unit: "mg",
+    rda: 16.3,
+    upperLimit: 40,
+    category: "mineral",
+    description: "Immune defense, adolescent growth spurts, cellular repair",
+  },
+  folate_ug: {
+    name: "Folate (B9)",
+    unit: "µg",
+    rda: 280,
+    upperLimit: 1000,
+    category: "vitamin",
+    description: "DNA synthesis, red blood cell formation, rapid tissue development",
+  },
+  vitamin_a_ug: {
+    name: "Vitamin A",
+    unit: "µg",
+    rda: 930,
+    upperLimit: 3000,
+    category: "vitamin",
+    description: "Vision health, cellular differentiation, immune system integrity",
+  },
+  vitamin_d_ug: {
+    name: "Vitamin D",
+    unit: "µg",
+    rda: 15, // 600 IU
+    upperLimit: 100,
+    category: "vitamin",
+    description: "Calcium absorption and mineralization of growing bones",
+  },
+  vitamin_b12_ug: {
+    name: "Vitamin B12",
+    unit: "µg",
+    rda: 2.5,
+    category: "vitamin",
+    description: "Nerve function, cognitive development, essential check for vegetarian diets",
+  },
+  saturated_fat_g: {
+    name: "Saturated Fat",
+    unit: "g",
+    rda: 20,
+    upperLimit: 20,
+    isUpperLimitOnly: true,
+    category: "macro",
+    description: "Keep below 10% of total daily energy intake",
+  },
+  sugars_g: {
+    name: "Added Sugars",
+    unit: "g",
+    rda: 25,
+    upperLimit: 25,
+    isUpperLimitOnly: true,
+    category: "macro",
+    description: "WHO guideline: limit free and added sugars to under 25g/day",
+  },
 };
 
 export interface NutrientReportItem {
@@ -98,6 +163,14 @@ export function computeDailyMicronutrients(
     potassium_mg: 0,
     sodium_mg: 0,
     vitamin_c_mg: 0,
+    magnesium_mg: 0,
+    zinc_mg: 0,
+    folate_ug: 0,
+    vitamin_a_ug: 0,
+    vitamin_d_ug: 0,
+    vitamin_b12_ug: 0,
+    saturated_fat_g: 0,
+    sugars_g: 0,
   };
 
   const sources: Record<
@@ -111,6 +184,14 @@ export function computeDailyMicronutrients(
     potassium_mg: [],
     sodium_mg: [],
     vitamin_c_mg: [],
+    magnesium_mg: [],
+    zinc_mg: [],
+    folate_ug: [],
+    vitamin_a_ug: [],
+    vitamin_d_ug: [],
+    vitamin_b12_ug: [],
+    saturated_fat_g: [],
+    sugars_g: [],
   };
 
   for (const entry of entries) {
@@ -156,6 +237,38 @@ export function computeDailyMicronutrients(
         totals.vitamin_c_mg += micros.vitamin_c_mg;
         sources.vitamin_c_mg.push({ foodName: entry.foodName, amount: micros.vitamin_c_mg });
       }
+      if (micros.magnesium_mg) {
+        totals.magnesium_mg += micros.magnesium_mg;
+        sources.magnesium_mg.push({ foodName: entry.foodName, amount: micros.magnesium_mg });
+      }
+      if (micros.zinc_mg) {
+        totals.zinc_mg += micros.zinc_mg;
+        sources.zinc_mg.push({ foodName: entry.foodName, amount: micros.zinc_mg });
+      }
+      if (micros.folate_ug) {
+        totals.folate_ug += micros.folate_ug;
+        sources.folate_ug.push({ foodName: entry.foodName, amount: micros.folate_ug });
+      }
+      if (micros.vitamin_a_ug) {
+        totals.vitamin_a_ug += micros.vitamin_a_ug;
+        sources.vitamin_a_ug.push({ foodName: entry.foodName, amount: micros.vitamin_a_ug });
+      }
+      if (micros.vitamin_d_ug) {
+        totals.vitamin_d_ug += micros.vitamin_d_ug;
+        sources.vitamin_d_ug.push({ foodName: entry.foodName, amount: micros.vitamin_d_ug });
+      }
+      if (micros.vitamin_b12_ug) {
+        totals.vitamin_b12_ug += micros.vitamin_b12_ug;
+        sources.vitamin_b12_ug.push({ foodName: entry.foodName, amount: micros.vitamin_b12_ug });
+      }
+      if (micros.saturated_fat_g) {
+        totals.saturated_fat_g += micros.saturated_fat_g;
+        sources.saturated_fat_g.push({ foodName: entry.foodName, amount: micros.saturated_fat_g });
+      }
+      if (micros.sugars_g) {
+        totals.sugars_g += micros.sugars_g;
+        sources.sugars_g.push({ foodName: entry.foodName, amount: micros.sugars_g });
+      }
     }
   }
 
@@ -168,6 +281,14 @@ export function computeDailyMicronutrients(
     "vitamin_c_mg",
     "potassium_mg",
     "sodium_mg",
+    "magnesium_mg",
+    "zinc_mg",
+    "folate_ug",
+    "vitamin_a_ug",
+    "vitamin_d_ug",
+    "vitamin_b12_ug",
+    "saturated_fat_g",
+    "sugars_g",
   ];
 
   const reports: NutrientReportItem[] = keys.map((k) => {

@@ -38,6 +38,14 @@ export interface Micronutrients {
   potassium_mg?: number;
   sodium_mg?: number;
   vitamin_c_mg?: number;
+  magnesium_mg?: number;
+  zinc_mg?: number;
+  folate_ug?: number;
+  vitamin_a_ug?: number;
+  vitamin_d_ug?: number;
+  vitamin_b12_ug?: number;
+  saturated_fat_g?: number;
+  sugars_g?: number;
 }
 
 export interface Food {
@@ -54,7 +62,7 @@ export interface Food {
   servingGrams: number;
   isApproximate: boolean;
   isCustom: boolean;
-  source: "seed" | "custom" | "ai";
+  source: "seed" | "custom" | "ai" | "recipe";
   createdAt: number;
   updatedAt: number;
 
@@ -65,6 +73,8 @@ export interface Food {
   unitConversions?: Partial<Record<Unit, number>>;
   provenance?: FoodProvenance;
   micronutrients?: Micronutrients;
+  isFavorite?: boolean;
+  notes?: string;
 }
 
 export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
@@ -84,7 +94,48 @@ export interface FoodEntry {
   grams?: number;
   date: string; // YYYY-MM-DD
   meal: MealType;
+  notes?: string;
   createdAt: number;
+}
+
+export interface RecipeIngredient {
+  foodId: string;
+  foodName: string;
+  quantity: number;
+  unit: Unit;
+  grams: number;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+  micronutrients?: Micronutrients;
+}
+
+export interface Recipe {
+  id: string;
+  name: string;
+  description?: string;
+  servings: number;
+  cookedWeightGrams?: number;
+  ingredients: RecipeIngredient[];
+  totalGrams: number;
+  totalCalories: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFat: number;
+  totalFiber?: number;
+  totalMicronutrients?: Micronutrients;
+  perServingGrams: number;
+  perServingCalories: number;
+  perServingProtein: number;
+  perServingCarbs: number;
+  perServingFat: number;
+  perServingFiber?: number;
+  perServingMicronutrients?: Micronutrients;
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface AppSettings {
@@ -97,6 +148,9 @@ export interface AppSettings {
   geminiModel: string;
   userProfile?: UserProfile;
   waterGoalMl?: number;
+  theme?: "system" | "light" | "dark";
+  hideExerciseCalories?: boolean;
+  enableWeightTracking?: boolean;
   stravaClientId?: string;
   stravaClientSecret?: string;
   stravaAccessToken?: string;
@@ -115,6 +169,7 @@ export type ActivityLevel =
 
 export type GoalType =
   | "maintain"
+  | "nourish"
   | "mild_deficit"
   | "deficit"
   | "mild_surplus"
@@ -142,6 +197,20 @@ export type WorkoutType =
   | "walking"
   | "other";
 
+export interface StrengthSet {
+  setNumber: number;
+  reps: number;
+  weightKg?: number;
+  completed?: boolean;
+}
+
+export interface StrengthExerciseLog {
+  exerciseId: string;
+  exerciseName: string;
+  sets: StrengthSet[];
+  notes?: string;
+}
+
 export interface WorkoutEntry {
   id: string;
   date: string; // YYYY-MM-DD
@@ -150,7 +219,10 @@ export interface WorkoutEntry {
   durationMinutes: number;
   caloriesBurned: number;
   distanceKm?: number;
+  paceMinPerKm?: number;
   avgHeartRate?: number;
+  perceivedEffort?: number; // RPE 1-10
+  exercises?: StrengthExerciseLog[];
   source: "manual" | "strava_gpx" | "strava_tcx" | "strava_json" | "strava_api";
   stravaActivityId?: string;
   notes?: string;

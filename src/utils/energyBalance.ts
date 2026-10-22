@@ -17,11 +17,12 @@ export const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
 };
 
 export const GOAL_LABELS: Record<GoalType, string> = {
-  maintain: "Maintain Weight",
-  mild_deficit: "Mild Deficit (-250 kcal/day, ~0.25 kg/wk)",
-  deficit: "Standard Deficit (-500 kcal/day, ~0.5 kg/wk)",
-  mild_surplus: "Lean Bulk / Surplus (+250 kcal/day)",
-  custom: "Custom Calorie Goal",
+  nourish: "Growth, Activity & Balanced Energy (Recommended for Teens)",
+  maintain: "Maintain Energy Balance (TDEE)",
+  mild_deficit: "Mild Deficit (-250 kcal/day, Adult Guidance Only)",
+  deficit: "Standard Deficit (-500 kcal/day, Adult Guidance Only)",
+  mild_surplus: "Lean Bulk / Growth Surplus (+250 kcal/day)",
+  custom: "Custom Calorie Target",
 };
 
 /**
@@ -57,11 +58,12 @@ export function calculateTargetCalories(profile: UserProfile): number {
   const tdee = calculateTDEE(profile);
   switch (profile.goalType) {
     case "mild_deficit":
-      return Math.max(1400, tdee - 250);
+      return Math.max(1600, tdee - 250);
     case "deficit":
-      return Math.max(1400, tdee - (profile.deficitTargetKcal || 500));
+      return Math.max(1600, tdee - (profile.deficitTargetKcal || 500));
     case "mild_surplus":
       return tdee + 250;
+    case "nourish":
     case "maintain":
     default:
       return tdee;

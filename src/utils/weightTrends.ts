@@ -42,23 +42,48 @@ export function calculateWeightProjection(
 }
 
 /**
- * Calculates BMI and classifies for adolescents/youth.
+ * Calculates BMI with adolescent context.
+ * Note: Adult BMI cutoffs (like Asian-Indian <23) are NOT diagnostic for adolescents (WHO/IAP).
  */
 export function calculateBMI(weightKg: number, heightCm: number): {
   bmi: number;
   category: "underweight" | "healthy" | "overweight" | "obese";
   label: string;
+  notice: string;
 } {
   if (heightCm <= 0 || weightKg <= 0) {
-    return { bmi: 0, category: "healthy", label: "Healthy Weight" };
+    return {
+      bmi: 0,
+      category: "healthy",
+      label: "Growth Context",
+      notice: "Individual adolescent growth patterns vary. Discuss with a healthcare professional.",
+    };
   }
   const heightM = heightCm / 100;
   const bmi = Number((weightKg / (heightM * heightM)).toFixed(1));
 
-  if (bmi < 18.5) return { bmi, category: "underweight", label: "Underweight / Lean" };
-  if (bmi < 23) return { bmi, category: "healthy", label: "Healthy / Ideal (Asian-Indian Cutoff)" };
-  if (bmi < 27.5) return { bmi, category: "overweight", label: "Overweight" };
-  return { bmi, category: "obese", label: "Obese" };
+  let category: "underweight" | "healthy" | "overweight" | "obese" = "healthy";
+  let label = "Active Developing Teen";
+  if (bmi < 18.5) {
+    category = "underweight";
+    label = "Lean / Growing Youth";
+  } else if (bmi < 23) {
+    category = "healthy";
+    label = "Active Developing Teen";
+  } else if (bmi < 27.5) {
+    category = "overweight";
+    label = "Higher Mass Range";
+  } else {
+    category = "obese";
+    label = "Pediatric Review Context";
+  }
+
+  return {
+    bmi,
+    category,
+    label,
+    notice: "Adult BMI categories do not define health for a growing adolescent. Use pediatric growth curves and healthcare advice.",
+  };
 }
 
 /**

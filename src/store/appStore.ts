@@ -11,9 +11,10 @@ import type {
   WeightEntry,
   WaterEntry,
   MealType,
+  Recipe,
 } from "../types.ts";
 import { parseQuickLogText, toSingular, type ParsedQuickLogItem } from "../utils/quickLogParser.ts";
-import { computeEntry } from "../utils/nutrition.ts";
+import { computeEntry, recipeToFood } from "../utils/nutrition.ts";
 import {
   syncStravaActivities,
   exchangeStravaToken,
@@ -78,6 +79,8 @@ interface AppState {
   waterEntries: WaterEntry[];
   savedMeals: SavedMeal[];
   weightEntries: WeightEntry[];
+  recipes: Recipe[];
+  deletedEntryHistory: FoodEntry[];
   settings: AppSettings;
   selectedDate: string;
   hydrated: boolean;
@@ -85,14 +88,27 @@ interface AppState {
   hydrate: () => Promise<void>;
   setDate: (d: string) => Promise<void>;
   addEntry: (e: FoodEntry) => Promise<void>;
+  updateEntry: (e: FoodEntry) => Promise<void>;
   deleteEntry: (id: string) => Promise<void>;
+  undoDeleteEntry: () => Promise<FoodEntry | null>;
+  duplicateEntry: (id: string) => Promise<void>;
+  moveEntry: (id: string, newMeal: MealType) => Promise<void>;
+  copyMealFromDate: (sourceDate: string, mealType: MealType, targetDate?: string) => Promise<number>;
+  copyDayFromDate: (sourceDate: string, targetDate?: string) => Promise<number>;
+
   upsertFood: (f: Food) => Promise<void>;
   deleteFood: (id: string) => Promise<void>;
+  toggleFavoriteFood: (id: string) => Promise<void>;
   updateSettings: (s: Partial<AppSettings>) => Promise<void>;
   searchFoods: (
     q: string,
-    options?: { category?: FoodCategory | "all"; vegOnly?: boolean }
+    options?: { category?: FoodCategory | "all"; vegOnly?: boolean; favoritesOnly?: boolean }
   ) => Food[];
+
+  // Recipes
+  saveRecipe: (recipe: Recipe) => Promise<void>;
+  deleteRecipe: (id: string) => Promise<void>;
+  logRecipeServing: (recipeId: string, servings: number, mealType?: MealType, date?: string) => Promise<void>;
 
   // Workouts & Strava
   addWorkout: (w: WorkoutEntry) => Promise<void>;
@@ -124,6 +140,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   waterEntries: [],
   savedMeals: [],
   weightEntries: [],
+  recipes: [],
+  deletedEntryHistory: [],
   settings: DEFAULT_SETTINGS,
   selectedDate: todayStr(),
   hydrated: false,
@@ -138,13 +156,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       foods = [...SEED_FOODS];
       localStorage.setItem("fitness-seed-version", SEED_VERSION);
     } else if (currentVersion !== SEED_VERSION) {
-      // Preserve custom / AI foods, replace seed items with verified nutrition data
-      const customFoods = foods.filter((f) => f.source !== "seed");
-      const oldSeedFoods = foods.filter((f) => f.source === "seed");
+      // Preserve custom / AI / user-modified foods, replace default seed items with verified nutrition data
+      const userFoods = foods.filter((f) => f.source !== "seed" || f.isCustom);
+      const oldSeedFoods = foods.filter((f) => f.source === "seed" && !f.isCustom);
       for (const old of oldSeedFoods) {
         await dbOps.deleteFood(old.id);
       }
-      const combined = [...SEED_FOODS, ...customFoods];
+      const combined = [...SEED_FOODS, ...userFoods];
       await dbOps.putFoods(combined);
       foods = combined;
       localStorage.setItem("fitness-seed-version", SEED_VERSION);
@@ -240,6 +258,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const weightEntries = await dbOps.getAllWeightEntries();
+    const recipes = await dbOps.getAllRecipes();
+
+    // Ensure recipes are included in foods list so search can discover them
+    for (const r of recipes) {
+      if (!foods.some((f) => f.id === r.id)) {
+        foods.push(recipeToFood(r));
+      }
+    }
 
     // sync localStorage gemini key to settings.geminiApiKey for UI
     const lsKey = localStorage.getItem("fitness-gemini-key");
@@ -255,6 +281,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       waterEntries,
       savedMeals,
       weightEntries,
+      recipes,
+      deletedEntryHistory: [],
       selectedDate: today,
       hydrated: true,
     });
@@ -285,9 +313,88 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (e.date === selectedDate) set((s) => ({ entries: [...s.entries, e] }));
   },
 
+  updateEntry: async (e: FoodEntry) => {
+    await dbOps.putEntry(e);
+    const { selectedDate } = get();
+    if (e.date === selectedDate) {
+      set((s) => ({
+        entries: s.entries.map((x) => (x.id === e.id ? e : x)),
+      }));
+    }
+  },
+
   deleteEntry: async (id: string) => {
+    const entry = get().entries.find((x) => x.id === id);
     await dbOps.deleteEntry(id);
-    set((s) => ({ entries: s.entries.filter((x) => x.id !== id) }));
+    set((s) => ({
+      entries: s.entries.filter((x) => x.id !== id),
+      deletedEntryHistory: entry ? [entry, ...s.deletedEntryHistory.slice(0, 9)] : s.deletedEntryHistory,
+    }));
+  },
+
+  undoDeleteEntry: async () => {
+    const { deletedEntryHistory, addEntry } = get();
+    if (deletedEntryHistory.length === 0) return null;
+    const [restored, ...remaining] = deletedEntryHistory;
+    await addEntry(restored);
+    set({ deletedEntryHistory: remaining });
+    return restored;
+  },
+
+  duplicateEntry: async (id: string) => {
+    const entry = get().entries.find((x) => x.id === id);
+    if (!entry) return;
+    const duplicated: FoodEntry = {
+      ...entry,
+      id: `e-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      createdAt: Date.now(),
+    };
+    await get().addEntry(duplicated);
+  },
+
+  moveEntry: async (id: string, newMeal: MealType) => {
+    const entry = get().entries.find((x) => x.id === id);
+    if (!entry) return;
+    const updated: FoodEntry = {
+      ...entry,
+      meal: newMeal,
+    };
+    await get().updateEntry(updated);
+  },
+
+  copyMealFromDate: async (sourceDate: string, mealType: MealType, targetDate?: string) => {
+    const dateToUse = targetDate || get().selectedDate;
+    const sourceEntries = await dbOps.getEntriesByDate(sourceDate);
+    const mealEntries = sourceEntries.filter((e) => e.meal === mealType);
+    let count = 0;
+    for (const item of mealEntries) {
+      const copy: FoodEntry = {
+        ...item,
+        id: `e-${Date.now()}-${Math.floor(Math.random() * 1000)}-${count}`,
+        date: dateToUse,
+        createdAt: Date.now(),
+      };
+      await get().addEntry(copy);
+      count++;
+    }
+    return count;
+  },
+
+  copyDayFromDate: async (sourceDate: string, targetDate?: string) => {
+    const dateToUse = targetDate || get().selectedDate;
+    const sourceEntries = await dbOps.getEntriesByDate(sourceDate);
+    let count = 0;
+    for (const item of sourceEntries) {
+      const copy: FoodEntry = {
+        ...item,
+        id: `e-${Date.now()}-${Math.floor(Math.random() * 1000)}-${count}`,
+        date: dateToUse,
+        createdAt: Date.now(),
+      };
+      await get().addEntry(copy);
+      count++;
+    }
+    return count;
   },
 
   upsertFood: async (f: Food) => {
@@ -306,6 +413,68 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteFood: async (id: string) => {
     await dbOps.deleteFood(id);
     set((s) => ({ foods: s.foods.filter((f) => f.id !== id) }));
+  },
+
+  toggleFavoriteFood: async (foodId: string) => {
+    const food = get().foods.find((f) => f.id === foodId);
+    if (!food) return;
+    const updated = { ...food, isFavorite: !food.isFavorite, updatedAt: Date.now() };
+    await get().upsertFood(updated);
+  },
+
+  saveRecipe: async (recipe: Recipe) => {
+    await dbOps.putRecipe(recipe);
+    const recipeFood = recipeToFood(recipe);
+    await dbOps.putFood(recipeFood);
+
+    set((s) => {
+      const rIdx = s.recipes.findIndex((r) => r.id === recipe.id);
+      const newRecipes = rIdx >= 0
+        ? s.recipes.map((r, i) => (i === rIdx ? recipe : r))
+        : [...s.recipes, recipe];
+
+      const fIdx = s.foods.findIndex((f) => f.id === recipeFood.id);
+      const newFoods = fIdx >= 0
+        ? s.foods.map((f, i) => (i === fIdx ? recipeFood : f))
+        : [recipeFood, ...s.foods];
+
+      return { recipes: newRecipes, foods: newFoods };
+    });
+  },
+
+  deleteRecipe: async (id: string) => {
+    await dbOps.deleteRecipe(id);
+    await dbOps.deleteFood(id);
+    set((s) => ({
+      recipes: s.recipes.filter((r) => r.id !== id),
+      foods: s.foods.filter((f) => f.id !== id),
+    }));
+  },
+
+  logRecipeServing: async (recipeId: string, servings: number, mealType: MealType = "lunch", date?: string) => {
+    const recipe = get().recipes.find((r) => r.id === recipeId);
+    if (!recipe) return;
+    const targetDate = date || get().selectedDate;
+    const safeServings = Math.max(0.25, servings);
+    const entry: FoodEntry = {
+      id: `e-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      foodId: recipe.id,
+      foodName: recipe.name,
+      quantity: safeServings,
+      unit: "serving",
+      calories: Math.round(recipe.perServingCalories * safeServings * 10) / 10,
+      protein: Math.round(recipe.perServingProtein * safeServings * 10) / 10,
+      carbs: Math.round(recipe.perServingCarbs * safeServings * 10) / 10,
+      fat: Math.round(recipe.perServingFat * safeServings * 10) / 10,
+      fiber: recipe.perServingFiber !== undefined ? Math.round(recipe.perServingFiber * safeServings * 10) / 10 : undefined,
+      micronutrients: recipe.perServingMicronutrients,
+      grams: Math.round(recipe.perServingGrams * safeServings),
+      date: targetDate,
+      meal: mealType,
+      notes: recipe.description ? `${safeServings} serving(s) of recipe: ${recipe.description}` : undefined,
+      createdAt: Date.now(),
+    };
+    await get().addEntry(entry);
   },
 
   updateSettings: async (patch: Partial<AppSettings>) => {
@@ -579,7 +748,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   searchFoods: (
     q: string,
-    options?: { category?: FoodCategory | "all"; vegOnly?: boolean }
+    options?: { category?: FoodCategory | "all"; vegOnly?: boolean; favoritesOnly?: boolean }
   ) => {
     const { foods } = get();
     let candidates = foods || [];
@@ -588,6 +757,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (options?.vegOnly) {
       candidates = candidates.filter((f) => f.dietaryPreference !== "non_veg");
+    }
+    if (options?.favoritesOnly) {
+      candidates = candidates.filter((f) => Boolean(f.isFavorite));
     }
 
     const query = q.toLowerCase().trim();
@@ -741,6 +913,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
         if (f.category === "staple" && score < 999) score -= 0.05;
         if (f.isCustom && score < 999) score -= 0.15;
+        if (f.isFavorite && score < 999) score -= 0.12;
         return { f, score };
       })
       .filter((x) => x.score < 999)
